@@ -3,6 +3,9 @@
 namespace Mpdf;
 
 use fpdi_pdf_parser;
+use Mpdf\Pdf\Protection;
+use Mpdf\Pdf\Protection\UniqidGenerator;
+use Mpdf\Writer\BaseWriter;
 use pdf_parser;
 use ReflectionClass;
 
@@ -481,10 +484,10 @@ class FpdiTest extends \PHPUnit_Framework_TestCase
 		$content = $this->fpdi_parser->getContent();
 
 		/* Check if contains specific text */
-		$this->assertNotSame(false, strpos($content, 'MAIN HEADING'));
-		$this->assertNotSame(false, strpos($content, 'Secondary Heading'));
-		$this->assertNotSame(false, strpos($content, 'Blue Liquid Designs'));
-		$this->assertSame(false, strpos($content, 'String Not In PDF'));
+		$this->assertNotFalse(strpos($content, 'MAIN HEADING'));
+		$this->assertNotFalse(strpos($content, 'Secondary Heading'));
+		$this->assertNotFalse(strpos($content, 'Blue Liquid Designs'));
+		$this->assertFalse(strpos($content, 'String Not In PDF'));
 	}
 
 	/**
@@ -524,5 +527,28 @@ class FpdiTest extends \PHPUnit_Framework_TestCase
 
 		$this->assertEquals(1, $rotation[0]);
 		$this->assertEquals(0, $rotation[1]);
+	}
+
+	/**
+	 * This test ensures that a string is unescaped before it is passed to the encryption function.
+	 */
+	public function testEncryptionOfStringWithOctalValue()
+	{
+		$pdf = new mPDF();
+		$writer = new BaseWriter($pdf, new Protection(new UniqidGenerator()));
+
+		$pdf->SetProtection(['copy','print'], '', 'password', 128);
+
+		$string = [
+			pdf_parser::TYPE_STRING,
+			'\040\t\n\f\040'
+		];
+
+		$pdf->pdf_write_value($string);
+
+		// (xxxxx)\n
+		$string = substr($pdf->buffer, 1, -2);
+		// we need to unescape the string, to get a comparable value
+		$this->assertEquals(5, strlen($writer->unescape($string)));
 	}
 }

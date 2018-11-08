@@ -49,6 +49,8 @@ if (!function_exists('\Mpdf\unicode_hex')) {
 class TTFontFile
 {
 
+	use Strict;
+
 	private $fontCache;
 
 	private $fontDescriptor;
@@ -1210,7 +1212,7 @@ class TTFontFile
 				$left = $this->read_ushort();
 				$right = $this->read_ushort();
 				$val = $this->read_short();
-				if (count($glyphToChar[$left]) == 1 && count($glyphToChar[$right]) == 1) {
+				if (isset($glyphToChar[$left]) && count($glyphToChar[$left]) == 1 && isset($glyphToChar[$right]) && count($glyphToChar[$right]) == 1) {
 					if ($left != 32 && $right != 32) {
 						$this->kerninfo[$glyphToChar[$left][0]][$glyphToChar[$right][0]] = intval($val * $scale);
 					}
