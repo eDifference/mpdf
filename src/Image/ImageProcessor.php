@@ -9,6 +9,8 @@ use Mpdf\Color\ColorModeConverter;
 
 use Mpdf\CssManager;
 
+use Mpdf\File\StreamWrapperChecker;
+
 use Mpdf\Gif\Gif;
 
 use Mpdf\Language\LanguageToFontInterface;
@@ -150,6 +152,15 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 
 	public function getImage(&$file, $firsttime = true, $allowvector = true, $orig_srcpath = false, $interpolation = false)
 	{
+		/**
+		 * Prevents insecure PHP object injection through phar:// wrapper
+		 * @see https://github.com/mpdf/mpdf/issues/949
+		 */
+		$wrapperChecker = new StreamWrapperChecker($this->mpdf);
+		if ($wrapperChecker->hasBlacklistedStreamWrapper($file)) {
+			return $this->imageError($file, $firsttime, 'File contains an invalid stream. Only ' . implode(', ', $wrapperChecker->getWhitelistedStreamWrappers()) . ' streams are allowed.');
+		}
+
 		// mPDF 6
 		// firsttime i.e. whether to add to this->images - use false when calling iteratively
 		// Image Data passed directly as var:varname
@@ -165,7 +176,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 			$file = md5($data);
 		}
 
-		if (preg_match('/data:image\/(gif|jpeg|png);base64,(.*)/', $file, $v)) {
+		if (preg_match('/data:image\/(gif|jpe?g|png);base64,(.*)/', $file, $v)) {
 			$type = $v[1];
 			$data = base64_decode($v[2]);
 			$file = md5($data);
@@ -578,7 +589,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 						if ($p) {
 							$n = $this->fourBytesToInt(substr($data, $p - 4, 4));
 							$transparency = substr($data, $p + 4, $n);
-							// ord($transparency{$index}) = the alpha value for that index
+							// ord($transparency[$index]) = the alpha value for that index
 							// generate alpha channel
 							for ($ypx = 0; $ypx < $h; ++$ypx) {
 								for ($xpx = 0; $xpx < $w; ++$xpx) {
@@ -586,7 +597,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 									if ($colorindex >= $n) {
 										$alpha = 255;
 									} else {
-										$alpha = ord($transparency{$colorindex});
+										$alpha = ord($transparency[$colorindex]);
 									} // 0-255
 									if ($alpha > 0) {
 										imagesetpixel($imgalpha, $xpx, $ypx, $alpha);
@@ -1095,7 +1106,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 					if ($p) {
 						$n = $this->fourBytesToInt(substr($data, $p - 4, 4));
 						$transparency = substr($data, $p + 4, $n);
-						// ord($transparency{$index}) = the alpha value for that index
+						// ord($transparency[$index]) = the alpha value for that index
 						// generate alpha channel
 						for ($ypx = 0; $ypx < $h; ++$ypx) {
 							for ($xpx = 0; $xpx < $w; ++$xpx) {
@@ -1103,7 +1114,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 								if ($colorindex >= $n) {
 									$alpha = 255;
 								} else {
-									$alpha = ord($transparency{$colorindex});
+									$alpha = ord($transparency[$colorindex]);
 								} // 0-255
 								$mimgdata .= chr($alpha);
 							}
@@ -1305,13 +1316,13 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 		$p += $this->twoBytesToInt(substr($data, $p, 2)); // Length of initial marker block
 		$marker = substr($data, $p, 2);
 
-		while ($marker !== chr(255) . chr(192) && $marker !== chr(255) . chr(194) && $p < strlen($data)) {
-			// Start of frame marker (FFC0) or (FFC2) mPDF 4.4.004
+		while ($marker !== chr(255) . chr(192) && $marker !== chr(255) . chr(194)  && $marker !== chr(255) . chr(193) && $p < strlen($data)) {
+			// Start of frame marker (FFC0) (FFC1) or (FFC2)
 			$p += $this->twoBytesToInt(substr($data, $p + 2, 2)) + 2; // Length of marker block
 			$marker = substr($data, $p, 2);
 		}
 
-		if ($marker !== chr(255) . chr(192) && $marker !== chr(255) . chr(194)) {
+		if ($marker !== chr(255) . chr(192) && $marker !== chr(255) . chr(194) && $marker !== chr(255) . chr(193)) {
 			return false;
 		}
 		return substr($data, $p + 2, 10);
@@ -1395,7 +1406,7 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 		$this->failedImages[$file] = true;
 
 		if ($firsttime && ($this->mpdf->showImageErrors || $this->mpdf->debug)) {
-			throw new \Mpdf\MpdfImageException(sprintf('%s (%s)', $msg, $file));
+			throw new \Mpdf\MpdfImageException(sprintf('%s (%s)', $msg, substr($file, 0, 256)));
 		}
 
 		$this->logger->warning(sprintf('%s (%s)', $msg, $file), ['context' => LogContext::IMAGES]);
@@ -1420,6 +1431,5 @@ class ImageProcessor implements \Psr\Log\LoggerAwareInterface
 
 		return $file . $query;
 	}
-
 
 }
